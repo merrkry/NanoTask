@@ -44,10 +44,12 @@ public class NanoTask<TResult>
 
     private void OnTermination()
     {
-        foreach(var continuation in _continuations)
+        foreach (var continuation in _continuations)
         {
-            continuation.Invoke();
+            NanoTaskScheduler.Global.Enqueue(continuation);
         }
+
+        _continuations.Clear();
     }
 
     internal TResult GetResult()
@@ -62,12 +64,18 @@ public class NanoTask<TResult>
         return _result!;
     }
 
-    public NanoTaskAwaiter<TResult> GetAwaiter() => new(this);
+    public NanoTaskAwaiter<TResult> GetAwaiter() => new NanoTaskAwaiter<TResult>(this);
 
     public bool IsCompleted() => _status is TaskStatus.RanToCompletion or TaskStatus.Faulted;
 
     public void RegisterContinuation(Action continuation)
     {
+        if (IsCompleted())
+        {
+            NanoTaskScheduler.Global.Enqueue(continuation);
+            return;
+        }
+
         _continuations.Add(continuation);
     }
 }

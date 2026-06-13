@@ -148,19 +148,270 @@ public sealed class StageTests
     }
 
     /// <summary>
-    /// A scheduler will eventually resume a suspended state machine after the awaited NanoTask completes.
+    /// Completing an awaited NanoTask enqueues the compiler-generated state machine continuation.
     /// </summary>
-    [Fact(Skip = "Missing: scheduler queue to run registered continuations.")]
-    public void IncompleteAwaiter_ResumesStateMachineWhenContinuationRuns()
+    [Fact]
+    public void AwaitedNanoTaskCompletion_EnqueuesStateMachineContinuation()
     {
+        var inner = new NanoTask<int>();
+
+        async NanoTask<int> AwaitIncompleteAsync()
+        {
+            var value = await inner;
+            return value + 1;
+        }
+
+        var outer = AwaitIncompleteAsync();
+
+        inner.SetResult(41);
+
+        Assert.False(outer.IsCompleted());
+
+        NanoTaskScheduler.Global.Drain();
+
+        Assert.True(outer.IsCompleted());
+        Assert.Equal(42, outer.GetResult());
     }
 
     /// <summary>
     /// A scheduler will eventually resume a suspended state machine and propagate an awaited NanoTask exception.
     /// </summary>
-    [Fact(Skip = "Missing: scheduler queue to run registered continuations.")]
+    [Fact]
     public void IncompleteFaultedNanoTask_FaultsOuterTaskWhenContinuationRuns()
     {
+        var inner = new NanoTask<int>();
+
+        async NanoTask<int> AwaitIncompleteAsync()
+        {
+            return await inner;
+        }
+
+        var outer = AwaitIncompleteAsync();
+
+        inner.SetException(new InvalidOperationException("boom"));
+
+        Assert.False(outer.IsCompleted());
+
+        NanoTaskScheduler.Global.Drain();
+
+        var exception = Assert.Throws<InvalidOperationException>(() => outer.GetResult());
+        Assert.Equal("boom", exception.Message);
+    }
+
+    /// <summary>
+    /// Completing a NanoTask only enqueues an already-registered manual continuation; scheduler.Drain owns execution.
+    /// </summary>
+    [Fact]
+    public void SetResult_EnqueuesPreviouslyRegisteredContinuationWithoutRunningInline()
+    {
+        var task = new NanoTask<int>();
+        var awaiter = task.GetAwaiter();
+        var continuationCalls = 0;
+
+        awaiter.OnCompleted(() => continuationCalls++);
+
+        task.SetResult(42);
+
+        Assert.Equal(0, continuationCalls);
+
+        NanoTaskScheduler.Global.Drain();
+
+        Assert.Equal(1, continuationCalls);
+    }
+
+    /// <summary>
+    /// Registering a continuation after completion still schedules it for the next scheduler drain.
+    /// </summary>
+    [Fact]
+    public void CompletedNanoTask_OnCompletedEnqueuesContinuation()
+    {
+        var task = new NanoTask<int>();
+        var continuationCalls = 0;
+
+        task.SetResult(42);
+
+        task.GetAwaiter().OnCompleted(() => continuationCalls++);
+
+        Assert.Equal(0, continuationCalls);
+
+        NanoTaskScheduler.Global.Drain();
+
+        Assert.Equal(1, continuationCalls);
+    }
+
+    /// <summary>
+    /// The same NanoTaskExt state machine box can resume through multiple incomplete awaits.
+    /// </summary>
+    [Fact]
+    public void SequentialIncompleteAwaits_ReuseStateMachineBoxAndPreserveLocals()
+    {
+        var first = new NanoTask<int>();
+        var second = new NanoTask<int>();
+        var observedValues = new List<int>();
+
+        async NanoTask<int> AwaitTwiceAsync()
+        {
+            var value = 10;
+            value += await first;
+            observedValues.Add(value);
+            value += await second;
+            observedValues.Add(value);
+            return value;
+        }
+
+        var task = AwaitTwiceAsync();
+
+        first.SetResult(1);
+        NanoTaskScheduler.Global.Drain();
+
+        Assert.False(task.IsCompleted());
+        Assert.Equal([11], observedValues);
+
+        second.SetResult(2);
+        NanoTaskScheduler.Global.Drain();
+
+        Assert.Equal([11, 13], observedValues);
+        Assert.Equal(13, task.GetResult());
+    }
+
+    /// <summary>
+    /// Independent suspended state machines can be resumed by the same scheduler drain.
+    /// </summary>
+    [Fact]
+    public void ParallelIncompleteAwaits_ResumeIndependentStateMachinesInOneDrain()
+    {
+        var first = new NanoTask<int>();
+        var second = new NanoTask<int>();
+        var completions = new List<string>();
+
+        async NanoTask<int> AwaitFirstAsync()
+        {
+            var value = await first;
+            completions.Add("first");
+            return value + 10;
+        }
+
+        async NanoTask<int> AwaitSecondAsync()
+        {
+            var value = await second;
+            completions.Add("second");
+            return value + 20;
+        }
+
+        var firstOuter = AwaitFirstAsync();
+        var secondOuter = AwaitSecondAsync();
+
+        first.SetResult(1);
+        second.SetResult(2);
+
+        Assert.False(firstOuter.IsCompleted());
+        Assert.False(secondOuter.IsCompleted());
+        Assert.Empty(completions);
+
+        NanoTaskScheduler.Global.Drain();
+
+        Assert.Equal(["first", "second"], completions);
+        Assert.Equal(11, firstOuter.GetResult());
+        Assert.Equal(22, secondOuter.GetResult());
+    }
+
+    /// <summary>
+    /// Multiple awaiters of the same NanoTask each get their own state machine continuation.
+    /// </summary>
+    [Fact]
+    public void SharedIncompleteNanoTask_ResumesAllAwaitingStateMachines()
+    {
+        var shared = new NanoTask<int>();
+        var completions = new List<string>();
+
+        async NanoTask<int> AwaitSharedAsync(string name, int offset)
+        {
+            var value = await shared;
+            completions.Add(name);
+            return value + offset;
+        }
+
+        var first = AwaitSharedAsync("first", 1);
+        var second = AwaitSharedAsync("second", 2);
+
+        shared.SetResult(40);
+
+        Assert.False(first.IsCompleted());
+        Assert.False(second.IsCompleted());
+        Assert.Empty(completions);
+
+        NanoTaskScheduler.Global.Drain();
+
+        Assert.Equal(["first", "second"], completions);
+        Assert.Equal(41, first.GetResult());
+        Assert.Equal(42, second.GetResult());
+    }
+
+    /// <summary>
+    /// A state machine resumed by the scheduler can suspend again without blocking other ready continuations.
+    /// </summary>
+    [Fact]
+    public void ParallelAwaits_OneStateMachineCanSuspendAgainWhileAnotherCompletes()
+    {
+        var firstStep = new NanoTask<int>();
+        var secondStep = new NanoTask<int>();
+        var independent = new NanoTask<int>();
+        var observed = new List<string>();
+
+        async NanoTask<int> AwaitTwiceAsync()
+        {
+            var value = await firstStep;
+            observed.Add($"after-first:{value}");
+            value += await secondStep;
+            observed.Add($"after-second:{value}");
+            return value;
+        }
+
+        async NanoTask<int> AwaitIndependentAsync()
+        {
+            var value = await independent;
+            observed.Add($"independent:{value}");
+            return value;
+        }
+
+        var chained = AwaitTwiceAsync();
+        var other = AwaitIndependentAsync();
+
+        firstStep.SetResult(10);
+        independent.SetResult(7);
+        NanoTaskScheduler.Global.Drain();
+
+        Assert.False(chained.IsCompleted());
+        Assert.True(other.IsCompleted());
+        Assert.Equal(["after-first:10", "independent:7"], observed);
+        Assert.Equal(7, other.GetResult());
+
+        secondStep.SetResult(5);
+        NanoTaskScheduler.Global.Drain();
+
+        Assert.Equal(["after-first:10", "independent:7", "after-second:15"], observed);
+        Assert.Equal(15, chained.GetResult());
+    }
+
+    /// <summary>
+    /// A reentrant scheduler.Drain call is deferred to the active drain loop.
+    /// </summary>
+    [Fact]
+    public void SchedulerDrain_ReentrantCallDefersToOuterDrain()
+    {
+        var calls = new List<int>();
+
+        NanoTaskScheduler.Global.Enqueue(() =>
+        {
+            calls.Add(1);
+            NanoTaskScheduler.Global.Enqueue(() => calls.Add(3));
+            NanoTaskScheduler.Global.Drain();
+            calls.Add(2);
+        });
+
+        NanoTaskScheduler.Global.Drain();
+
+        Assert.Equal([1, 2, 3], calls);
     }
 
     /// <summary>
