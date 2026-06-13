@@ -1,4 +1,6 @@
-namespace NanoTask.Tests;
+using NanoTasks;
+
+namespace NanoTasks.Tests;
 
 public sealed class StageTests
 {
@@ -8,6 +10,11 @@ public sealed class StageTests
     [Fact]
     public void SyncAsyncMethod_CompletesWithResult()
     {
+        async NanoTask<int> Return42Async()
+        {
+            return 42;
+        }
+
         var task = Return42Async();
 
         Assert.Equal(42, task.GetResult());
@@ -19,6 +26,11 @@ public sealed class StageTests
     [Fact]
     public void SyncAsyncMethod_CapturesException()
     {
+        async NanoTask<int> ThrowAsync()
+        {
+            throw new InvalidOperationException("boom");
+        }
+
         var task = ThrowAsync();
 
         var exception = Assert.Throws<InvalidOperationException>(() => task.GetResult());
@@ -28,10 +40,10 @@ public sealed class StageTests
     /// <summary>
     /// NanoTask exposes the awaiter pattern so the C# compiler can await it.
     /// </summary>
-    [Fact(Skip = "Missing: NanoTask<T>.GetAwaiter() and an awaiter with IsCompleted/GetResult/OnCompleted/UnsafeOnCompleted.")]
+    [Fact]
     public void AwaiterSurface_ExistsOnNanoTask()
     {
-        var getAwaiter = typeof(global::NanoTask.NanoTask<int>).GetMethod("GetAwaiter");
+        var getAwaiter = typeof(NanoTask<int>).GetMethod("GetAwaiter");
 
         Assert.NotNull(getAwaiter);
 
@@ -45,9 +57,20 @@ public sealed class StageTests
     /// <summary>
     /// Awaiting an already-completed NanoTask uses the completed fast path without registering a continuation.
     /// </summary>
-    [Fact(Skip = "Missing: NanoTask<T>.GetAwaiter() so this code can compile.")]
+    [Fact]
     public void CompletedNanoTask_CanBeAwaitedByAnotherNanoTask()
     {
+        async NanoTask<int> CompletedAsync()
+        {
+            return 42;
+        }
+
+        async NanoTask<int> AwaitCompletedAsync()
+        {
+            var value = await CompletedAsync();
+            return value + 1;
+        }
+
         var task = AwaitCompletedAsync();
 
         Assert.Equal(43, task.GetResult());
@@ -56,9 +79,19 @@ public sealed class StageTests
     /// <summary>
     /// Awaiting a faulted NanoTask rethrows the stored exception from awaiter.GetResult().
     /// </summary>
-    [Fact(Skip = "Missing: NanoTask<T>.GetAwaiter() so this code can compile.")]
+    [Fact]
     public void FaultedNanoTask_RethrowsWhenAwaitedByAnotherNanoTask()
     {
+        async NanoTask<int> FaultedAsync()
+        {
+            throw new InvalidOperationException("boom");
+        }
+
+        async NanoTask<int> AwaitFaultedAsync()
+        {
+            return await FaultedAsync();
+        }
+
         var task = AwaitFaultedAsync();
 
         var exception = Assert.Throws<InvalidOperationException>(() => task.GetResult());
@@ -89,29 +122,4 @@ public sealed class StageTests
     {
     }
 
-    private static async global::NanoTask.NanoTask<int> Return42Async()
-    {
-        return 42;
-    }
-
-    private static async global::NanoTask.NanoTask<int> ThrowAsync()
-    {
-        throw new InvalidOperationException("boom");
-    }
-
-    /// <summary>
-    /// Awaits a synchronously completed NanoTask and transforms its result.
-    /// </summary>
-    private static global::NanoTask.NanoTask<int> AwaitCompletedAsync()
-    {
-        throw new NotImplementedException("Missing: NanoTask<T>.GetAwaiter() so this helper can await Return42Async().");
-    }
-
-    /// <summary>
-    /// Awaits a faulted NanoTask so the stored exception is observed through awaiter.GetResult().
-    /// </summary>
-    private static global::NanoTask.NanoTask<int> AwaitFaultedAsync()
-    {
-        throw new NotImplementedException("Missing: NanoTask<T>.GetAwaiter() so this helper can await ThrowAsync().");
-    }
 }

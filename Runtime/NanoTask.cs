@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 
-namespace NanoTask;
+namespace NanoTasks;
 
 internal readonly struct VoidResult { }
 
@@ -12,7 +12,7 @@ public class NanoTask<TResult>
     {
         Started,
         Completed,
-        Exception,
+        Faulted,
     }
 
     private TaskState _state;
@@ -36,7 +36,7 @@ public class NanoTask<TResult>
         Debug.Assert(_state == TaskState.Started);
 
         _exception = exception;
-        _state = TaskState.Exception;
+        _state = TaskState.Faulted;
 
         OnTermination();
     }
@@ -50,7 +50,7 @@ public class NanoTask<TResult>
     {
         Debug.Assert(_state != TaskState.Started);
 
-        if (_state == TaskState.Exception)
+        if (_state == TaskState.Faulted)
         {
             throw _exception!;
         }

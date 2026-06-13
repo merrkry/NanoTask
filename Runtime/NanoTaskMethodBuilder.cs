@@ -1,6 +1,6 @@
 using System.Runtime.CompilerServices;
 
-namespace NanoTask;
+namespace NanoTasks;
 
 public struct NanoTaskMethodBuilder<TResult>
 {
