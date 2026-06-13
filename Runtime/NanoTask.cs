@@ -8,14 +8,14 @@ internal readonly struct VoidResult { }
 [AsyncMethodBuilder(typeof(NanoTaskMethodBuilder<>))]
 public class NanoTask<TResult>
 {
-    private enum TaskState
+    private enum TaskStatus
     {
         Started,
-        Completed,
+        RanToCompletion,
         Faulted,
     }
 
-    private TaskState _state;
+    private TaskStatus _status;
 
     private TResult? _result;
     private Exception? _exception;
@@ -23,20 +23,20 @@ public class NanoTask<TResult>
 
     internal void SetResult(TResult result)
     {
-        Debug.Assert(_state == TaskState.Started);
+        Debug.Assert(_status == TaskStatus.Started);
 
         _result = result;
-        _state = TaskState.Completed;
+        _status = TaskStatus.RanToCompletion;
 
         OnTermination();
     }
 
     internal void SetException(Exception exception)
     {
-        Debug.Assert(_state == TaskState.Started);
+        Debug.Assert(_status == TaskStatus.Started);
 
         _exception = exception;
-        _state = TaskState.Faulted;
+        _status = TaskStatus.Faulted;
 
         OnTermination();
     }
@@ -48,13 +48,17 @@ public class NanoTask<TResult>
 
     internal TResult GetResult()
     {
-        Debug.Assert(_state != TaskState.Started);
+        Debug.Assert(_status != TaskStatus.Started);
 
-        if (_state == TaskState.Faulted)
+        if (_status == TaskStatus.Faulted)
         {
             throw _exception!;
         }
 
         return _result!;
     }
+
+    public NanoTaskAwaiter<TResult> GetAwaiter() => new(this);
+
+    public bool IsCompleted() => _status is TaskStatus.RanToCompletion or TaskStatus.Faulted;
 }
