@@ -19,7 +19,8 @@ public class NanoTask<TResult>
 
     private TResult? _result;
     private Exception? _exception;
-    private Action? _continuation;
+    // TODO: lazy initialization -> inline storage -> heap alloc
+    private List<Action> _continuations = new();
 
     internal void SetResult(TResult result)
     {
@@ -43,7 +44,10 @@ public class NanoTask<TResult>
 
     private void OnTermination()
     {
-        _continuation?.Invoke();
+        foreach(var continuation in _continuations)
+        {
+            continuation.Invoke();
+        }
     }
 
     internal TResult GetResult()
@@ -61,4 +65,9 @@ public class NanoTask<TResult>
     public NanoTaskAwaiter<TResult> GetAwaiter() => new(this);
 
     public bool IsCompleted() => _status is TaskStatus.RanToCompletion or TaskStatus.Faulted;
+
+    public void RegisterContinuation(Action continuation)
+    {
+        _continuations.Add(continuation);
+    }
 }

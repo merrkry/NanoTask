@@ -99,18 +99,67 @@ public sealed class StageTests
     }
 
     /// <summary>
+    /// OnCompleted registers a continuation without running it inline.
+    /// </summary>
+    [Fact]
+    public void IncompleteAwaiter_OnCompletedDoesNotRunContinuationInline()
+    {
+        var task = new NanoTask<int>();
+        var awaiter = task.GetAwaiter();
+        var continuationCalls = 0;
+
+        awaiter.OnCompleted(() => continuationCalls++);
+
+        Assert.Equal(0, continuationCalls);
+    }
+
+    /// <summary>
+    /// UnsafeOnCompleted registers a continuation without running it inline.
+    /// </summary>
+    [Fact]
+    public void IncompleteAwaiter_UnsafeOnCompletedDoesNotRunContinuationInline()
+    {
+        var task = new NanoTask<int>();
+        var awaiter = task.GetAwaiter();
+        var continuationCalls = 0;
+
+        awaiter.UnsafeOnCompleted(() => continuationCalls++);
+
+        Assert.Equal(0, continuationCalls);
+    }
+
+    /// <summary>
     /// AwaitUnsafeOnCompleted registers the current state machine continuation when the awaited operation is incomplete.
     /// </summary>
-    [Fact(Skip = "Missing: continuation registration on NanoTask<T> and builder await logic.")]
+    [Fact]
     public void IncompleteAwaiter_RegistersContinuationWithoutCompletingOuterTask()
+    {
+        var inner = new NanoTask<int>();
+
+        async NanoTask<int> AwaitIncompleteAsync()
+        {
+            var value = await inner;
+            return value + 1;
+        }
+
+        var outer = AwaitIncompleteAsync();
+
+        Assert.False(outer.IsCompleted());
+    }
+
+    /// <summary>
+    /// A scheduler will eventually resume a suspended state machine after the awaited NanoTask completes.
+    /// </summary>
+    [Fact(Skip = "Missing: scheduler queue to run registered continuations.")]
+    public void IncompleteAwaiter_ResumesStateMachineWhenContinuationRuns()
     {
     }
 
     /// <summary>
-    /// Invoking a registered continuation resumes the suspended state machine and lets it reach SetResult or SetException.
+    /// A scheduler will eventually resume a suspended state machine and propagate an awaited NanoTask exception.
     /// </summary>
-    [Fact(Skip = "Missing: continuation registration on NanoTask<T> and builder await logic.")]
-    public void IncompleteAwaiter_ResumesStateMachineWhenContinuationRuns()
+    [Fact(Skip = "Missing: scheduler queue to run registered continuations.")]
+    public void IncompleteFaultedNanoTask_FaultsOuterTaskWhenContinuationRuns()
     {
     }
 

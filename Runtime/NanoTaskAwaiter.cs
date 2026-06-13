@@ -13,12 +13,13 @@ public readonly struct NanoTaskAwaiter<TResult> : ICriticalNotifyCompletion
 
     public void UnsafeOnCompleted(Action continuation)
     {
-        throw new NotImplementedException();
+        _task.RegisterContinuation(continuation);
     }
 
+    // Not particularly meaningful under our single-threaded assumption.
     public void OnCompleted(Action continuation)
     {
-        throw new NotImplementedException();
+        UnsafeOnCompleted(continuation);
     }
 
     public bool IsCompleted => _task.IsCompleted();
