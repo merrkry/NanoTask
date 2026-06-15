@@ -46,7 +46,7 @@ public class NanoTask<TResult>
     {
         foreach (var continuation in _continuations)
         {
-            NanoTaskScheduler.Global.Enqueue(continuation);
+            NanoTaskScheduler.Global.Post(continuation);
         }
 
         _continuations.Clear();
@@ -72,7 +72,7 @@ public class NanoTask<TResult>
     {
         if (IsCompleted())
         {
-            NanoTaskScheduler.Global.Enqueue(continuation);
+            NanoTaskScheduler.Global.Post(continuation);
             return;
         }
 
