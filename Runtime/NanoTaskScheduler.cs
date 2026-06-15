@@ -5,8 +5,9 @@ namespace NanoTasks;
 
 internal class NanoTaskScheduler
 {
-    private static NanoTaskScheduler? s_global;
-    internal static NanoTaskScheduler Global => s_global ??= new();
+    [ThreadStatic]
+    private static NanoTaskScheduler? t_current;
+    internal static NanoTaskScheduler Current => t_current ??= new();
 
     private readonly ConcurrentQueue<Action> _queue = new();
 
@@ -28,6 +29,11 @@ internal class NanoTaskScheduler
 
     public TResult Run<TResult>(Func<NanoTask<TResult>> entry)
     {
+        if (t_current != this)
+        {
+            throw new InvalidOperationException("Use Current to access scheduler instead");
+        }
+
         if (Interlocked.CompareExchange(ref _running, 1, 0) != 0)
         {
             throw new InvalidOperationException("Worker is already running on some thread, reentrant is forbidden");

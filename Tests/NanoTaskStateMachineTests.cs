@@ -21,7 +21,7 @@ public sealed class NanoTaskStateMachineTests
             return value + 1;
         }
 
-        var result = NanoTaskScheduler.Global.Run(Entry);
+        var result = NanoTaskScheduler.Current.Run(Entry);
 
         Assert.Equal(43, result);
     }
@@ -42,7 +42,7 @@ public sealed class NanoTaskStateMachineTests
             return await FaultedAsync();
         }
 
-        var exception = Assert.Throws<InvalidOperationException>(() => NanoTaskScheduler.Global.Run(Entry));
+        var exception = Assert.Throws<InvalidOperationException>(() => NanoTaskScheduler.Current.Run(Entry));
         Assert.Equal("boom", exception.Message);
     }
 
@@ -60,18 +60,18 @@ public sealed class NanoTaskStateMachineTests
         {
             var value = 10;
 
-            NanoTaskScheduler.Global.Post(() => first.SetResult(1));
+            NanoTaskScheduler.Current.Post(() => first.SetResult(1));
             value += await first;
             observedValues.Add(value);
 
-            NanoTaskScheduler.Global.Post(() => second.SetResult(2));
+            NanoTaskScheduler.Current.Post(() => second.SetResult(2));
             value += await second;
             observedValues.Add(value);
 
             return value;
         }
 
-        var result = NanoTaskScheduler.Global.Run(Entry);
+        var result = NanoTaskScheduler.Current.Run(Entry);
 
         Assert.Equal([11, 13], observedValues);
         Assert.Equal(13, result);
@@ -106,7 +106,7 @@ public sealed class NanoTaskStateMachineTests
             var firstOuter = AwaitFirstAsync();
             var secondOuter = AwaitSecondAsync();
 
-            NanoTaskScheduler.Global.Post(() =>
+            NanoTaskScheduler.Current.Post(() =>
             {
                 first.SetResult(1);
                 second.SetResult(2);
@@ -115,7 +115,7 @@ public sealed class NanoTaskStateMachineTests
             return await firstOuter + await secondOuter;
         }
 
-        var result = NanoTaskScheduler.Global.Run(Entry);
+        var result = NanoTaskScheduler.Current.Run(Entry);
 
         Assert.Equal(["first", "second"], completions);
         Assert.Equal(33, result);
@@ -142,12 +142,12 @@ public sealed class NanoTaskStateMachineTests
             var first = AwaitSharedAsync("first", 1);
             var second = AwaitSharedAsync("second", 2);
 
-            NanoTaskScheduler.Global.Post(() => shared.SetResult(40));
+            NanoTaskScheduler.Current.Post(() => shared.SetResult(40));
 
             return await first + await second;
         }
 
-        var result = NanoTaskScheduler.Global.Run(Entry);
+        var result = NanoTaskScheduler.Current.Run(Entry);
 
         Assert.Equal(["first", "second"], completions);
         Assert.Equal(83, result);
@@ -169,7 +169,7 @@ public sealed class NanoTaskStateMachineTests
             var value = await firstStep;
             observed.Add($"after-first:{value}");
 
-            NanoTaskScheduler.Global.Post(() => secondStep.SetResult(5));
+            NanoTaskScheduler.Current.Post(() => secondStep.SetResult(5));
 
             value += await secondStep;
             observed.Add($"after-second:{value}");
@@ -188,7 +188,7 @@ public sealed class NanoTaskStateMachineTests
             var chained = AwaitTwiceAsync();
             var other = AwaitIndependentAsync();
 
-            NanoTaskScheduler.Global.Post(() =>
+            NanoTaskScheduler.Current.Post(() =>
             {
                 firstStep.SetResult(10);
                 independent.SetResult(7);
@@ -197,7 +197,7 @@ public sealed class NanoTaskStateMachineTests
             return await chained + await other;
         }
 
-        var result = NanoTaskScheduler.Global.Run(Entry);
+        var result = NanoTaskScheduler.Current.Run(Entry);
 
         Assert.Equal(["after-first:10", "independent:7", "after-second:15"], observed);
         Assert.Equal(22, result);

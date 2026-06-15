@@ -6,6 +6,8 @@ public readonly struct NanoTaskAwaiter<TResult> : ICriticalNotifyCompletion
 {
     private readonly NanoTask<TResult> _task;
 
+    internal NanoTaskScheduler Scheduler => _task.Scheduler;
+
     internal NanoTaskAwaiter(NanoTask<TResult> task)
     {
         _task = task;

@@ -34,7 +34,7 @@ public struct NanoTaskMethodBuilder<TResult>
     where TAwaiter : INotifyCompletion
     where TStateMachine : IAsyncStateMachine
     {
-        var continuation = PrepareStateMachineContinuation(ref stateMachine);
+        var continuation = PrepareStateMachineContinuation(ref awaiter, ref stateMachine);
         awaiter.OnCompleted(continuation);
     }
 
@@ -43,7 +43,7 @@ public struct NanoTaskMethodBuilder<TResult>
     where TAwaiter : ICriticalNotifyCompletion
     where TStateMachine : IAsyncStateMachine
     {
-        var continuation = PrepareStateMachineContinuation(ref stateMachine);
+        var continuation = PrepareStateMachineContinuation(ref awaiter, ref stateMachine);
         awaiter.UnsafeOnCompleted(continuation);
     }
 
@@ -52,8 +52,9 @@ public struct NanoTaskMethodBuilder<TResult>
         stateMachine.MoveNext();
     }
 
-    private Action PrepareStateMachineContinuation<TStateMachine>(
-    ref TStateMachine stateMachine)
+    private Action PrepareStateMachineContinuation<TAwaiter, TStateMachine>(
+    ref TAwaiter awaiter, ref TStateMachine stateMachine)
+    where TAwaiter : INotifyCompletion
     where TStateMachine : IAsyncStateMachine
     {
         // The order of assignments is critial here.
@@ -66,7 +67,10 @@ public struct NanoTaskMethodBuilder<TResult>
         // 3. Box/assign stateMachine
         var task = GetOrCreateSuspendedTask<TStateMachine>();
         task.StateMachine = stateMachine;
-        return task.ContinuationAction;
+
+        // We cannot check awaiter's type and access its Scheduler field without introducing boxing.
+        // For now we treat all continuation as foreign to ensure correctness.
+        return task.ForeignContinuation;
     }
 
     private NanoTaskExt<TResult, TStateMachine> GetOrCreateSuspendedTask<TStateMachine>() where TStateMachine : IAsyncStateMachine

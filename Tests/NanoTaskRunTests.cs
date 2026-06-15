@@ -15,7 +15,7 @@ public sealed class NanoTaskRunTests
             return 42;
         }
 
-        var result = NanoTaskScheduler.Global.Run(Entry);
+        var result = NanoTaskScheduler.Current.Run(Entry);
 
         Assert.Equal(42, result);
     }
@@ -31,7 +31,7 @@ public sealed class NanoTaskRunTests
             throw new InvalidOperationException("boom");
         }
 
-        var exception = Assert.Throws<InvalidOperationException>(() => NanoTaskScheduler.Global.Run(Entry));
+        var exception = Assert.Throws<InvalidOperationException>(() => NanoTaskScheduler.Current.Run(Entry));
         Assert.Equal("boom", exception.Message);
     }
 
@@ -42,7 +42,7 @@ public sealed class NanoTaskRunTests
     public void Run_PumpsWorkPostedBeforeEntryCompletes()
     {
         var inner = new NanoTask<int>();
-        NanoTaskScheduler.Global.Post(() => inner.SetResult(40));
+        NanoTaskScheduler.Current.Post(() => inner.SetResult(40));
 
         async NanoTask<int> Entry()
         {
@@ -50,7 +50,7 @@ public sealed class NanoTaskRunTests
             return value + 2;
         }
 
-        var result = NanoTaskScheduler.Global.Run(Entry);
+        var result = NanoTaskScheduler.Current.Run(Entry);
 
         Assert.Equal(42, result);
     }
@@ -65,12 +65,12 @@ public sealed class NanoTaskRunTests
 
         async NanoTask<int> Entry()
         {
-            NanoTaskScheduler.Global.Post(() => inner.SetResult(41));
+            NanoTaskScheduler.Current.Post(() => inner.SetResult(41));
             var value = await inner;
             return value + 1;
         }
 
-        var result = NanoTaskScheduler.Global.Run(Entry);
+        var result = NanoTaskScheduler.Current.Run(Entry);
 
         Assert.Equal(42, result);
     }
@@ -85,12 +85,12 @@ public sealed class NanoTaskRunTests
 
         async NanoTask<int> Entry()
         {
-            NanoTaskScheduler.Global.Post(() => inner.SetResult(0));
+            NanoTaskScheduler.Current.Post(() => inner.SetResult(0));
             await inner;
             throw new InvalidOperationException("boom");
         }
 
-        var exception = Assert.Throws<InvalidOperationException>(() => NanoTaskScheduler.Global.Run(Entry));
+        var exception = Assert.Throws<InvalidOperationException>(() => NanoTaskScheduler.Current.Run(Entry));
         Assert.Equal("boom", exception.Message);
     }
 
@@ -107,10 +107,10 @@ public sealed class NanoTaskRunTests
 
         async NanoTask<int> Entry()
         {
-            return NanoTaskScheduler.Global.Run(Nested);
+            return NanoTaskScheduler.Current.Run(Nested);
         }
 
-        var exception = Assert.Throws<InvalidOperationException>(() => NanoTaskScheduler.Global.Run(Entry));
+        var exception = Assert.Throws<InvalidOperationException>(() => NanoTaskScheduler.Current.Run(Entry));
         Assert.Contains("reentrant", exception.Message);
     }
 }

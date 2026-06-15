@@ -17,12 +17,12 @@ public sealed class NanoTaskContinuationTests
 
         async NanoTask<int> Entry()
         {
-            NanoTaskScheduler.Global.Post(() => task.SetResult(42));
+            NanoTaskScheduler.Current.Post(() => task.SetResult(42));
             await task;
             return continuationCalls;
         }
 
-        var result = NanoTaskScheduler.Global.Run(Entry);
+        var result = NanoTaskScheduler.Current.Run(Entry);
 
         Assert.Equal(1, result);
     }
@@ -51,7 +51,7 @@ public sealed class NanoTaskContinuationTests
             return continuationCalls;
         }
 
-        var result = NanoTaskScheduler.Global.Run(Entry);
+        var result = NanoTaskScheduler.Current.Run(Entry);
 
         Assert.Equal(1, result);
     }
@@ -66,11 +66,11 @@ public sealed class NanoTaskContinuationTests
 
         async NanoTask<int> Entry()
         {
-            NanoTaskScheduler.Global.Post(() => inner.SetException(new InvalidOperationException("boom")));
+            NanoTaskScheduler.Current.Post(() => inner.SetException(new InvalidOperationException("boom")));
             return await inner;
         }
 
-        var exception = Assert.Throws<InvalidOperationException>(() => NanoTaskScheduler.Global.Run(Entry));
+        var exception = Assert.Throws<InvalidOperationException>(() => NanoTaskScheduler.Current.Run(Entry));
         Assert.Equal("boom", exception.Message);
     }
 }

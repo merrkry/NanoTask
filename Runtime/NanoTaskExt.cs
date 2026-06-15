@@ -8,13 +8,25 @@ internal sealed class NanoTaskExt<TResult, TStateMachine> : NanoTask<TResult>
 where TStateMachine : IAsyncStateMachine
 {
     internal TStateMachine StateMachine = default!;
-    // Re-use Action object to avoid alloc on every onCompleted.
-    internal readonly Action ContinuationAction;
+
+    // Reuseable Action objects to avoid alloc on every onCompleted.
+
+
+    /// <summary>
+    /// Continuation action executed on current scheduler.
+    /// </summary>
+    internal readonly Action LocalContinuation;
+    /// <summary>
+    /// Continuation action executed on a foreign scheduler, e.g. NanoTaskScheduler on other threads or BCL ThreadPool.
+    /// </summary>
+    internal readonly Action ForeignContinuation;
 
     internal NanoTaskExt()
     {
-        // This unavoidably introduces allocations, because OnCompleted expects an Action nontheless.
-        ContinuationAction = MoveNext;
+        // These unavoidably introduces allocations, because OnCompleted expects an Action nontheless.
+        LocalContinuation = MoveNext;
+        var capturedTask = Scheduler;
+        ForeignContinuation = () => capturedTask.Post(LocalContinuation);
     }
 
     // Use a wrapper to ensure the delegation binds to current class instead of StateMachine struct field.

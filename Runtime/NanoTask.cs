@@ -8,55 +8,78 @@ internal readonly struct VoidResult { }
 [AsyncMethodBuilder(typeof(NanoTaskMethodBuilder<>))]
 public class NanoTask<TResult>
 {
-    private enum TaskStatus
+    private static class TaskStatus
     {
-        Started,
-        RanToCompletion,
-        Faulted,
+        public const int Started = 0;
+        public const int RanToCompletion = 1;
+        public const int Faulted = 2;
     }
 
-    private TaskStatus _status;
+    private volatile int _status;
 
     private TResult? _result;
     private Exception? _exception;
     // TODO: lazy initialization -> inline storage -> heap alloc
-    private List<Action> _continuations = new();
+    private List<Action>? _continuations = new();
+
+    private readonly Lock _lock = new();
+
+    internal readonly NanoTaskScheduler Scheduler;
+
+    public NanoTask()
+    {
+        Scheduler = NanoTaskScheduler.Current;
+    }
 
     internal void SetResult(TResult result)
     {
-        Debug.Assert(_status == TaskStatus.Started);
-
         _result = result;
-        _status = TaskStatus.RanToCompletion;
+        if (Interlocked.CompareExchange(ref _status, TaskStatus.RanToCompletion, TaskStatus.Started) != TaskStatus.Started)
+        {
+            throw new InvalidOperationException("Failed to switch to RanToCompletion");
+        }
 
         OnTermination();
     }
 
     internal void SetException(Exception exception)
     {
-        Debug.Assert(_status == TaskStatus.Started);
-
         _exception = exception;
-        _status = TaskStatus.Faulted;
+        if (Interlocked.CompareExchange(ref _status, TaskStatus.Faulted, TaskStatus.Started) != TaskStatus.Started)
+        {
+            throw new InvalidOperationException("Failed to switch to Faulted");
+        }
 
         OnTermination();
     }
 
     private void OnTermination()
     {
-        foreach (var continuation in _continuations)
+        List<Action>? continuations;
+
+        lock (_lock)
         {
-            NanoTaskScheduler.Global.Post(continuation);
+            continuations = _continuations;
+            _continuations = null;
         }
 
-        _continuations.Clear();
+        if (continuations is null)
+        {
+            return;
+        }
+
+        foreach (var continuation in continuations)
+        {
+            Scheduler.Post(continuation);
+        }
     }
 
     internal TResult GetResult()
     {
-        Debug.Assert(_status != TaskStatus.Started);
+        var status = _status;
+        Debug.Assert(status != TaskStatus.Started);
 
-        if (_status == TaskStatus.Faulted)
+        if (status == TaskStatus.Faulted)
         {
             throw _exception!;
         }
@@ -70,12 +93,25 @@ public class NanoTask<TResult>
 
     public void RegisterContinuation(Action continuation)
     {
-        if (IsCompleted())
+        bool postNow = false;
+
+        lock (_lock)
         {
-            NanoTaskScheduler.Global.Post(continuation);
-            return;
+            // If we enter here BEFORE OnTermination() hit its critical zone, _continuations is guaranteed to be valid.
+            // On the other hand, AFTER the critical zone, `IsCompleted` is guaranteed to return true and we do not access _continuations.
+            if (IsCompleted())
+            {
+                postNow = true;
+            }
+            else
+            {
+                _continuations!.Add(continuation);
+            }
         }
 
-        _continuations.Add(continuation);
+        if (postNow)
+        {
+            Scheduler.Post(continuation);
+        }
     }
 }
