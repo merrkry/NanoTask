@@ -1,2 +1,22 @@
-bin/
-obj/
+# Build output
+[Bb]in/
+[Oo]bj/
+
+# Visual Studio and Rider user files
+.vs/
+.idea/
+*.user
+*.userosscache
+*.suo
+*.rsuser
+
+# Test results and coverage
+[Tt]est[Rr]esult*/
+*.trx
+*.coverage
+*.coveragexml
+
+# NuGet packages and generated artifacts
+*.nupkg
+*.snupkg
+packages/
